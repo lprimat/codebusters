@@ -66,18 +66,17 @@ class Player {
 	private static Action getAction(Entity currentBuster, List<Entity> ghosts,
 			List<Entity> ennBusters) {
 		Action a = null;
+		// Buster with ghost need to return to base
 		if (currentBuster.state == 1) {
-			// Buster with ghost need to return to base
 			Boolean isReleasePossible = isRealeasePossible(currentBuster, base);
 			if (isReleasePossible) {
 				return new Action("RELEASE");
-			} else {
-				return new Action("MOVE", base.x, base.y);
 			}
+			return new Action("MOVE", base.x, base.y);
 		}
 		
-		//Get action to stun an ennemy with a ghost
-		a = getEnnemy(currentBuster, ennBusters);
+		//Get action to stun an enemy with a ghost
+		a = getEnemy(currentBuster, ennBusters, ghosts);
 		if (a == null) {
 			//Get action to bust or move to catch a ghost
 			a = getGhost(currentBuster, ghosts);
@@ -90,11 +89,13 @@ class Player {
 		return a;
 	}
 
-	private static Action getEnnemy(Entity buster, List<Entity> ennemies) {
-		if (!ennemies.isEmpty()) {
-			Entity closestEnnemy = getClosestEntity(buster, ennemies);
-			if (closestEnnemy!= null && closestEnnemy.state == 1) {
-				return new Action("STUN", closestEnnemy.id);
+	private static Action getEnemy(Entity buster, List<Entity> enemies, List<Entity> ghosts) {
+		if (!enemies.isEmpty()) {
+			Entity closestEnemy = getClosestEnnemy(buster, enemies);
+			Entity closestGhost = getClosestGhost(buster, ghosts);
+			if (closestEnemy!= null && 
+					(closestEnemy.state == 1 || closestEnemy.state == 3)) {
+				return new Action("STUN", closestEnemy.id);
 			}
 		}
 		return null;
@@ -102,7 +103,7 @@ class Player {
 
 	private static Action getGhost(Entity currentBuster, List<Entity> ghosts) {
 		if (!ghosts.isEmpty()) {
-			Entity closestGhost = getClosestEntity(currentBuster, ghosts);
+			Entity closestGhost = getClosestGhost(currentBuster, ghosts);
 			if (closestGhost == null) {
 				System.err.println("No closest ghost for buster : " + currentBuster.id);
 				return null;
@@ -112,9 +113,8 @@ class Player {
 			System.err.println("isBustPossible : " + isBustingPossible);
 			if (isBustingPossible) {
 				return new Action("BUST", closestGhost.id);
-			} else {
-				return new Action("MOVE", closestGhost.x, closestGhost.y);
-			}
+			} 
+			return new Action("MOVE", closestGhost.x, closestGhost.y);
 		}
 		
 		return null;
@@ -123,30 +123,51 @@ class Player {
 	private static Action discoverBase(Entity buster) {
 		double discoverZoneSize = MAP_HEIGHT / bustersPerPlayer;
 		int posYInZone = (int) ((discoverZoneSize * (buster.id + 1)) - (discoverZoneSize / 2));
-		System.err.println("For buster : " + buster.id + " posInZone is : " + posYInZone);
-		if (buster.y != posYInZone) {
-			return new Action("MOVE", buster.x, posYInZone);
-		} 
-		
-		int posXInZone = base.x == 0 ? MAP_WIDTH : 0;
-		return new Action ("MOVE", posXInZone, posYInZone);
+		int posXInZone = base.x == 0 ? MAP_WIDTH - VIEW_RANGE : 0 + VIEW_RANGE;
+		if (buster.x != posXInZone) {
+			if (buster.y != posYInZone) {
+				return new Action("MOVE", buster.x, posYInZone);
+			} 
+			System.err.println("GO TO ZONE");
+			return new Action ("MOVE", posXInZone, posYInZone);
+		}
+		System.err.println("GO TO ENNEMIE BASE");
+		int ennemieBaseY = base.y == 0 ? MAP_HEIGHT - MAX_RELEASE_RANGE: 0 + MAX_RELEASE_RANGE;
+		return new Action ("MOVE", posXInZone, ennemieBaseY);
 	}
 
-	private static Entity getClosestEntity(Entity buster, List<Entity> entities) {
+	private static Entity getClosestGhost(Entity buster, List<Entity> ghosts) {
 		double minDist = Double.MAX_VALUE;
 		Entity closestEntity = null; 
-		for (Entity entity : entities) {
-			double distance = getDistance(buster, entity);
+		for (Entity ghost : ghosts) {
+			double distance = getDistance(buster, ghost);
 			//if distance is greater than view_range that's mean that our buster is too far away
 			//if the entity is a ghost and the distance is < than MIN_BUST_RANGE then we can't catch it
-			if (distance > VIEW_RANGE || (entity.type == -1 && distance < MIN_BUST_RANGE)) continue;
+			//if (distance > VIEW_RANGE || (entity.type == -1 && distance < MIN_BUST_RANGE)) continue;
+			if (distance > VIEW_RANGE * 2) continue;
 			if (distance < minDist) {
-				closestEntity = entity;
+				closestEntity = ghost;
 				minDist = distance;
 			}
 		}
 		return closestEntity;
 	}
+	
+	private static Entity getClosestEnnemy(Entity buster, List<Entity> ennemies) {
+		double minDist = Double.MAX_VALUE;
+		Entity closestEntity = null; 
+		for (Entity ennemy : ennemies) {
+			double distance = getDistance(buster, ennemy);
+			//if distance is greater than MAX_BUST_RANGE that's mean that our buster is too far away to attack any ennemy
+			if (distance > MAX_BUST_RANGE) continue;
+			if (distance < minDist) {
+				closestEntity = ennemy;
+				minDist = distance;
+			}
+		}
+		return closestEntity;
+	}
+
 
 	private static double getDistance(Entity a, Entity b) {
 		double d = Math.pow(Math.abs(a.x - b.x), 2) + Math.pow(Math.abs(a.y - b.y), 2);
