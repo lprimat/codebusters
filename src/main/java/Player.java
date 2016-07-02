@@ -7,64 +7,133 @@ import java.math.*;
  **/
 class Player {
 	
-	public static int MAP_WIDTH = 16001;
-	public static int MAP_HEIGHT = 9001;
-	public static int MAX_BUST_RANGE = 1760;
-	public static int MIN_BUST_RANGE = 900;
-	public static int MAX_RELEASE_RANGE = 1600;
-	public static int VIEW_RANGE = 2200;
+	public static final int MAP_WIDTH = 16001;
+	public static final int MAP_HEIGHT = 9001;
+	public static final int MAX_BUST_RANGE = 1760;
+	public static final int MIN_BUST_RANGE = 900;
+	public static final int MAX_RELEASE_RANGE = 1600;
+	public static final int VIEW_RANGE = 2200;
+	public static final int TIME_FOR_RECHARGE_WEAPON = 20;
 	
 	private static Entity base;
 	private static int bustersPerPlayer;
+	private static List<Buster> busters;
+	private static List<Entity> enemies;
+	private static List<Entity> ghosts;
 	
     public static void main(String args[]) {
         Scanner in = new Scanner(System.in);
         bustersPerPlayer = in.nextInt(); // the amount of busters you control
         int ghostCount = in.nextInt(); // the amount of ghosts on the map
-        int myTeamId = in.nextInt(); // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
+        int myId = in.nextInt(); // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
+        int enemyId = myId == 0 ? 1 : 0;
         
-        base = new Entity(myTeamId);
+        busters = initBustersList(myId, bustersPerPlayer);
+        enemies = initEntitiesList(bustersPerPlayer, enemyId);
+        ghosts = initEntitiesList(ghostCount, -1);
+        base = setupBase(myId);
         
-        System.err.println("bustersPerPlayer : " + bustersPerPlayer);
-        System.err.println("ghostCount : " + ghostCount);
-        System.err.println("myTeamId : " + myTeamId);
-        
-        // game loop
         while (true) {
             int entities = in.nextInt(); // the number of busters and ghosts visible to you
-            System.err.println("I can see " + entities + " entities");
-            List<Entity> myBusters = new ArrayList<>();
-            List<Entity> ennBusters = new ArrayList<>();
-            List<Entity> ghosts = new ArrayList<>();
+            resetVisibility(enemies);
+            resetVisibility(ghosts);
+            refreshBusters(busters);
             for (int i = 0; i < entities; i++) {
-                int entityId = in.nextInt(); // buster id or ghost id
+                int entityId = in.nextInt();
                 int x = in.nextInt();
-                int y = in.nextInt(); // position of this buster / ghost
-                int entityType = in.nextInt(); // the team id if it is a buster, -1 if it is a ghost.
-                int state = in.nextInt(); // For busters: 0=idle, 1=carrying a ghost.
-                int value = in.nextInt(); // For busters: Ghost id being carried. For ghosts: number of busters attempting to trap this ghost.
-                Entity e = new Entity(entityId, x, y, entityType, state, value);
-                if (entityType != -1) {
-                	if (entityType == myTeamId) {
-                		//Modify the id to be able to have number from 0 to bustersPerPlayer for my players
-                    	e.id = entityType == 0 ? entityId : entityId - bustersPerPlayer;
-                		myBusters.add(e);
-                	} else ennBusters.add(e);                	
-                } else ghosts.add(e);
+                int y = in.nextInt();
+                int entityType = in.nextInt();
+                int state = in.nextInt();
+                int value = in.nextInt();
+                setupEntity(myId, enemyId, entityId, x, y, entityType, state,
+						value);
             }
-            System.err.println("myBuster size : " + myBusters.size());
-            System.err.println("ennBuster size : " + ennBusters.size());
-            System.err.println("ghosts size : " + ghosts.size());
+
             for (int i = 0; i < bustersPerPlayer; i++) {
-            	Entity currentBuster = myBusters.get(i);
-            	Action action = getAction(currentBuster, ghosts, ennBusters);
+            	Buster currentBuster = busters.get(i);
+            	Action action = getAction(currentBuster);
             	action.print();
             }
+            
         }
     }
+    
+    //Refresh all buster, decrease time for charging and reset target 
+    private static void refreshBusters(List<Buster> busters) {
+    	for (Buster b : busters) {
+    		b.refresh();
+    	}
+	}
 
-	private static Action getAction(Entity currentBuster, List<Entity> ghosts,
-			List<Entity> ennBusters) {
+	//Reset the visibility of all entities 
+    private static void resetVisibility(List<Entity> entities) {
+    	for (Entity e : entities) {
+    		e.isVisible = false;
+    	}
+	}
+
+	//Setup base coordinate based on my team id
+	private static Entity setupBase(int myId) {
+		Entity base = new Entity(-1);
+		if (myId == 0) {
+			base.x = 0;
+			base.y = 0;
+		} else {
+			base.x = 16000;
+			base.y = 9000;
+		}
+		return base;
+	}
+
+	private static void setupEntity(int myId, int enemyId, int entityId, int x,
+			int y, int entityType, int state, int value) {
+		Entity e = null;
+		if (entityType == -1) {
+			System.err.println("Setup ghost : " + entityId);
+			e = ghosts.get(entityId);
+		} else {
+		    if (entityType == myId) {
+		    	e = busters.get(getNormalizedId(myId, entityId));
+		    } else {
+		    	e = enemies.get(getNormalizedId(enemyId, entityId));
+		    }
+		}
+		e.setProperties(x, y, entityType, state, value);
+	}
+    
+    private static int getNormalizedId(int teamId, int entityId) {
+    	int normalizedId = teamId == 0 ? entityId : entityId - bustersPerPlayer;
+    	return normalizedId;
+	}
+
+	private static List<Buster> initBustersList(int myTeamId,
+			int nbBusters) {
+		List<Buster> bustersList = new ArrayList<>(nbBusters);
+		for (int i = 0; i < nbBusters; i++) {
+			int id = myTeamId == 0 ? i : i + nbBusters;
+			int normalizedId = myTeamId == 0 ? id : id - nbBusters; 
+			Buster b = new Buster(id, normalizedId);
+			bustersList.add(b);
+		}
+		return bustersList;
+	}
+
+	private static List<Entity> initEntitiesList(int nbEntities, int teamId) {
+		List<Entity> entities = new ArrayList<>(nbEntities);
+		for (int i = 0; i < nbEntities; i++) {
+			int id = i;
+			//if we setup enemies list
+			if (teamId != -1) {
+				//We need to have the real id of the enemy buster
+				id = teamId == 0 ? i : i + nbEntities;
+			}
+			Entity b = new Entity(id); 
+			entities.add(b);
+		}
+		return entities;
+	}
+
+	private static Action getAction(Buster currentBuster) {
 		Action a = null;
 		// Buster with ghost need to return to base
 		if (currentBuster.state == 1) {
@@ -75,8 +144,8 @@ class Player {
 			return new Action("MOVE", base.x, base.y);
 		}
 		
-		//Get action to stun an enemy with a ghost
-		a = getEnemy(currentBuster, ennBusters, ghosts);
+		//Get action to stun an enemy
+		a = getEnemy(currentBuster, enemies, ghosts);
 		if (a == null) {
 			//Get action to bust or move to catch a ghost
 			a = getGhost(currentBuster, ghosts);
@@ -89,28 +158,37 @@ class Player {
 		return a;
 	}
 
-	private static Action getEnemy(Entity buster, List<Entity> enemies, List<Entity> ghosts) {
+	private static Action getEnemy(Buster buster, List<Entity> enemies, List<Entity> ghosts) {
 		if (!enemies.isEmpty()) {
-			Entity closestEnemy = getClosestEnnemy(buster, enemies);
-			Entity closestGhost = getClosestGhost(buster, ghosts);
-			if (closestEnemy!= null && 
-					(closestEnemy.state == 1 || closestEnemy.state == 3)) {
-				return new Action("STUN", closestEnemy.id);
+			List<Entity> enemiesToStun = getTargets(buster, enemies);
+			for (Entity enemy : enemiesToStun) {
+				boolean isNotATarget = isNotATarget(enemy);
+				if (enemy.state != 2 && isNotATarget && buster.rechargeWeapon == 0) {
+					System.err.println("Target for : " + buster.id + " is enemy " + enemy.id);
+					buster.fire(enemy.id);
+					return new Action("STUN", enemy.id);
+				}
 			}
 		}
 		return null;
+	}
+
+	private static boolean isNotATarget(Entity enemy) {
+		for (Buster buster : busters) {
+			if (buster.targetId == enemy.id) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static Action getGhost(Entity currentBuster, List<Entity> ghosts) {
 		if (!ghosts.isEmpty()) {
 			Entity closestGhost = getClosestGhost(currentBuster, ghosts);
 			if (closestGhost == null) {
-				System.err.println("No closest ghost for buster : " + currentBuster.id);
 				return null;
 			}
-			System.err.println("Closest ghost for buster : " + currentBuster.id	+ " is ghost : " + closestGhost.id);
 			Boolean isBustingPossible = isBustingPossible(currentBuster, closestGhost);
-			System.err.println("isBustPossible : " + isBustingPossible);
 			if (isBustingPossible) {
 				return new Action("BUST", closestGhost.id);
 			} 
@@ -120,52 +198,57 @@ class Player {
 		return null;
 	}
 
-	private static Action discoverBase(Entity buster) {
-		double discoverZoneSize = MAP_HEIGHT / bustersPerPlayer;
-		int posYInZone = (int) ((discoverZoneSize * (buster.id + 1)) - (discoverZoneSize / 2));
-		int posXInZone = base.x == 0 ? MAP_WIDTH - VIEW_RANGE : 0 + VIEW_RANGE;
-		if (buster.x != posXInZone) {
-			if (buster.y != posYInZone) {
-				return new Action("MOVE", buster.x, posYInZone);
-			} 
-			System.err.println("GO TO ZONE");
-			return new Action ("MOVE", posXInZone, posYInZone);
-		}
-		System.err.println("GO TO ENNEMIE BASE");
-		int ennemieBaseY = base.y == 0 ? MAP_HEIGHT - MAX_RELEASE_RANGE: 0 + MAX_RELEASE_RANGE;
-		return new Action ("MOVE", posXInZone, ennemieBaseY);
+	private static Action discoverBase(Buster buster) {
+		
+		double discoverZoneSizeX = MAP_WIDTH / bustersPerPlayer;
+		double discoverZoneSizeY = MAP_HEIGHT / bustersPerPlayer;
+		int posXInZone = (int) ((discoverZoneSizeX * (buster.normalizedId + 1)) - (discoverZoneSizeX / 2));
+		int posYInZone = MAP_HEIGHT - (int) ((discoverZoneSizeY * (buster.normalizedId + 1)) - (discoverZoneSizeY / 2));
+		//int posXInZone = base.x == 0 ? MAP_WIDTH - VIEW_RANGE : 0 + VIEW_RANGE;
+		return new Action ("MOVE", posXInZone, posYInZone);
+//		if (buster.x != posXInZone) {
+//			if (buster.y != posYInZone) {
+//				return new Action("MOVE", buster.x, posYInZone);
+//			} 
+//			System.err.println("GO TO ZONE");
+//			return new Action ("MOVE", posXInZone, posYInZone);
+//		}
+//		System.err.println("GO TO ENNEMIE BASE");
+//		int ennemieBaseY = base.y == 0 ? MAP_HEIGHT - MAX_RELEASE_RANGE: 0 + MAX_RELEASE_RANGE;
+//		return new Action ("MOVE", posXInZone, ennemieBaseY);
 	}
 
 	private static Entity getClosestGhost(Entity buster, List<Entity> ghosts) {
 		double minDist = Double.MAX_VALUE;
 		Entity closestEntity = null; 
 		for (Entity ghost : ghosts) {
-			double distance = getDistance(buster, ghost);
-			//if distance is greater than view_range that's mean that our buster is too far away
-			//if the entity is a ghost and the distance is < than MIN_BUST_RANGE then we can't catch it
-			//if (distance > VIEW_RANGE || (entity.type == -1 && distance < MIN_BUST_RANGE)) continue;
-			if (distance > VIEW_RANGE * 2) continue;
-			if (distance < minDist) {
-				closestEntity = ghost;
-				minDist = distance;
+			if (ghost.isVisible) {
+				double distance = getDistance(buster, ghost);
+				//if distance is greater than view_range that's mean that our buster is too far away
+				//if the entity is a ghost and the distance is < than MIN_BUST_RANGE then we can't catch it
+				//if (distance > VIEW_RANGE || (entity.type == -1 && distance < MIN_BUST_RANGE)) continue;
+				if (distance > VIEW_RANGE * 2) continue;
+				if (distance < minDist) {
+					closestEntity = ghost;
+					minDist = distance;
+				}
 			}
 		}
 		return closestEntity;
 	}
 	
-	private static Entity getClosestEnnemy(Entity buster, List<Entity> ennemies) {
-		double minDist = Double.MAX_VALUE;
-		Entity closestEntity = null; 
-		for (Entity ennemy : ennemies) {
-			double distance = getDistance(buster, ennemy);
-			//if distance is greater than MAX_BUST_RANGE that's mean that our buster is too far away to attack any ennemy
-			if (distance > MAX_BUST_RANGE) continue;
-			if (distance < minDist) {
-				closestEntity = ennemy;
-				minDist = distance;
+	private static List<Entity> getTargets(Entity buster, List<Entity> enemies) {
+		List<Entity> targets = new ArrayList<>();
+		for (Entity enemy : enemies) {
+			if (enemy.isVisible) {
+				double distance = getDistance(buster, enemy);
+				//if distance is greater than MAX_BUST_RANGE that's mean that our buster is too far away to attack any enemy
+				if (distance <= MAX_BUST_RANGE) {
+					targets.add(enemy);
+				}
 			}
 		}
-		return closestEntity;
+		return targets;
 	}
 
 
@@ -195,26 +278,74 @@ class Entity {
 	public int type;
     public int state;
     public int value;
-	
-    public Entity(int entityId, int x, int y, int entityType, int state,
+    public boolean isVisible = false;
+
+	public void setProperties(int x, int y, int entityType, int state,
 			int value) {
-		this.id = entityId;
 		this.x = x;
 		this.y = y;
 		this.type = entityType;
 		this.state = state;
 		this.value = value;
+		this.isVisible = true;
 	}
 
 	public Entity(int id) {
-		if (id == 0) {
-			this.x = 0;
-			this.y = 0;
-		} else {
-			this.x = 16000;
-			this.y = 9000;			
-		}
+		this.id = id;
 	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + id;
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (obj == null) {
+			return false;
+		}
+		if (getClass() != obj.getClass()) {
+			return false;
+		}
+		Entity other = (Entity) obj;
+		if (id != other.id) {
+			return false;
+		}
+		return true;
+	}
+}
+
+class Buster extends Entity {
+	
+	int rechargeWeapon = 0;
+	int targetId = -1;
+	int normalizedId;
+
+	public Buster(int id) {
+		super(id);
+	}
+	
+	public Buster(int id, int normalizedId) {
+		super(id);
+		this.normalizedId = normalizedId;
+	}
+
+	public void fire(int targetId) {
+		this.rechargeWeapon = Player.TIME_FOR_RECHARGE_WEAPON;
+		this.targetId = targetId;
+	}
+	
+	public void refresh() {
+		rechargeWeapon = rechargeWeapon > 0 ? rechargeWeapon - 1 : 0;
+		targetId = -1;
+	}
+	
 }
 
 class Action {
