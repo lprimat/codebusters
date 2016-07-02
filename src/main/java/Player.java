@@ -16,10 +16,12 @@ class Player {
 	public static final int TIME_FOR_RECHARGE_WEAPON = 20;
 	
 	private static Entity base;
+	private static Entity enemyBase;
 	private static int bustersPerPlayer;
 	private static List<Buster> busters;
 	private static List<Entity> enemies;
 	private static List<Entity> ghosts;
+	private static List<Buster> busterAtEnemyBase;
 	
     public static void main(String args[]) {
         Scanner in = new Scanner(System.in);
@@ -28,16 +30,18 @@ class Player {
         int myId = in.nextInt(); // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
         int enemyId = myId == 0 ? 1 : 0;
         
+        busterAtEnemyBase = new ArrayList<>();
         busters = initBustersList(myId, bustersPerPlayer);
         enemies = initEntitiesList(bustersPerPlayer, enemyId);
         ghosts = initEntitiesList(ghostCount, -1);
         base = setupBase(myId);
+        enemyBase = setupBase(enemyId);
+        
         
         while (true) {
             int entities = in.nextInt(); // the number of busters and ghosts visible to you
             resetVisibility(enemies);
             resetVisibility(ghosts);
-            refreshBusters(busters);
             for (int i = 0; i < entities; i++) {
                 int entityId = in.nextInt();
                 int x = in.nextInt();
@@ -48,6 +52,7 @@ class Player {
                 setupEntity(myId, enemyId, entityId, x, y, entityType, state,
 						value);
             }
+            refreshBusters(busters, enemyId);
 
             for (int i = 0; i < bustersPerPlayer; i++) {
             	Buster currentBuster = busters.get(i);
@@ -58,11 +63,33 @@ class Player {
         }
     }
     
-    //Refresh all buster, decrease time for charging and reset target 
-    private static void refreshBusters(List<Buster> busters) {
+    //Refresh all buster, decrease time for charging and reset target
+    //Check is buster is at enemy base and refresh list busterAtEnemyBase according to the results
+    private static void refreshBusters(List<Buster> busters, int enemyId) {
     	for (Buster b : busters) {
-    		b.refresh();
+    		b.refresh(enemyBase);
+    		b.isAtEnnemyBase = isAtEnemyBase(enemyId, b);
+    		System.err.println("Buster : " + b.id + " isAtEnnemyBase : " + b.isAtEnnemyBase + " busterAtEnemyBase.contains(b) : " + busterAtEnemyBase.contains(b));
+    		if (b.isAtEnnemyBase) {
+    			if (!busterAtEnemyBase.contains(b)) busterAtEnemyBase.add(b);
+    		} else {
+    			int index = busterAtEnemyBase.indexOf(b);
+    			if (index != -1)  {
+    				System.err.println("Remove b at index : " + index);
+    				busterAtEnemyBase.remove(index);
+    			}
+    		}
     	}
+	}
+
+	private static boolean isAtEnemyBase(int enemyId, Buster b) {
+		int enX = (int) Math.abs(enemyBase.x - MAX_RELEASE_RANGE * 2);
+		int enY = (int) Math.abs(enemyBase.y - MAX_RELEASE_RANGE * 2);
+		if (enemyId == 0) {
+			return b.x <= enX && b.y <= enY;
+		} else {
+			return b.x >= enX && b.y >= enY;
+		}
 	}
 
 	//Reset the visibility of all entities 
@@ -79,8 +106,8 @@ class Player {
 			base.x = 0;
 			base.y = 0;
 		} else {
-			base.x = 16000;
-			base.y = 9000;
+			base.x = 16001;
+			base.y = 9001;
 		}
 		return base;
 	}
@@ -202,20 +229,30 @@ class Player {
 		
 		double discoverZoneSizeX = MAP_WIDTH / bustersPerPlayer;
 		double discoverZoneSizeY = MAP_HEIGHT / bustersPerPlayer;
-		int posXInZone = (int) ((discoverZoneSizeX * (buster.normalizedId + 1)) - (discoverZoneSizeX / 2));
-		int posYInZone = MAP_HEIGHT - (int) ((discoverZoneSizeY * (buster.normalizedId + 1)) - (discoverZoneSizeY / 2));
-		//int posXInZone = base.x == 0 ? MAP_WIDTH - VIEW_RANGE : 0 + VIEW_RANGE;
-		return new Action ("MOVE", posXInZone, posYInZone);
-//		if (buster.x != posXInZone) {
-//			if (buster.y != posYInZone) {
-//				return new Action("MOVE", buster.x, posYInZone);
-//			} 
-//			System.err.println("GO TO ZONE");
-//			return new Action ("MOVE", posXInZone, posYInZone);
-//		}
-//		System.err.println("GO TO ENNEMIE BASE");
-//		int ennemieBaseY = base.y == 0 ? MAP_HEIGHT - MAX_RELEASE_RANGE: 0 + MAX_RELEASE_RANGE;
-//		return new Action ("MOVE", posXInZone, ennemieBaseY);
+		int posXDiagonal = (int) ((discoverZoneSizeX * (buster.normalizedId + 1)) - (discoverZoneSizeX / 2));
+		int posYDiagonal = MAP_HEIGHT - (int) ((discoverZoneSizeY * (buster.normalizedId + 1)) - (discoverZoneSizeY / 2));
+		
+		if (buster.samePosX(posXDiagonal) && buster.samePosY(posYDiagonal)) {
+			buster.isDiagonalCheck = true;
+		}
+		
+		if (buster.isDiagonalCheck) {
+			int nbBusterAtEnemyBase = busterAtEnemyBase.size();
+			System.err.println("busterAtEnemyBase : " + nbBusterAtEnemyBase);
+			int index = busterAtEnemyBase.indexOf(buster);
+			if (index == -1) {
+				index = nbBusterAtEnemyBase;
+				nbBusterAtEnemyBase++;
+			}
+			double angleRange = 90.0 / nbBusterAtEnemyBase;
+			double angle = (angleRange * (index + 1)) - (angleRange / 2.0);
+			System.err.println("Buster : " + buster.id + " GO TO ENEMIE BASE with angle : " + angle);
+			
+			
+			posXDiagonal = Math.abs((int) (enemyBase.x - MAX_RELEASE_RANGE * 1.5 * Math.cos(Math.toRadians(angle))));
+			posYDiagonal = Math.abs((int) (enemyBase.y - MAX_RELEASE_RANGE * 1.5 * Math.sin(Math.toRadians(angle))));
+		}
+		return new Action ("MOVE", posXDiagonal, posYDiagonal);	
 	}
 
 	private static Entity getClosestGhost(Entity buster, List<Entity> ghosts) {
@@ -326,11 +363,24 @@ class Buster extends Entity {
 	int rechargeWeapon = 0;
 	int targetId = -1;
 	int normalizedId;
+	boolean isDiagonalCheck = false;
+	boolean isAtEnnemyBase = false;
+	int idAtEnnemyBase = 0;
 
 	public Buster(int id) {
 		super(id);
 	}
 	
+	public boolean samePosX(int posXDiagonal) {
+		int diff = Math.abs(this.x - posXDiagonal);
+		return diff <= 20;
+	}
+
+	public boolean samePosY(int posYDiagonal) {
+		int diff = Math.abs(this.y - posYDiagonal);
+		return diff <= 15;
+	}
+
 	public Buster(int id, int normalizedId) {
 		super(id);
 		this.normalizedId = normalizedId;
@@ -341,7 +391,7 @@ class Buster extends Entity {
 		this.targetId = targetId;
 	}
 	
-	public void refresh() {
+	public void refresh(Entity enemyBase) {
 		rechargeWeapon = rechargeWeapon > 0 ? rechargeWeapon - 1 : 0;
 		targetId = -1;
 	}
