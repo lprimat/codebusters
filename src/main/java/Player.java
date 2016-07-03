@@ -1,10 +1,7 @@
-import java.util.*;
-import java.io.*;
-import java.math.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
 
-/**
- * Send your busters out into the fog to trap ghosts and bring them home!
- **/
 class Player {
 	
 	public static final int MAP_WIDTH = 16001;
@@ -39,7 +36,7 @@ class Player {
         
         
         while (true) {
-            int entities = in.nextInt(); // the number of busters and ghosts visible to you
+            int entities = in.nextInt(); // the number of busters and ghosts visible
             resetVisibility(enemies);
             resetVisibility(ghosts);
             for (int i = 0; i < entities; i++) {
@@ -106,8 +103,8 @@ class Player {
 			base.x = 0;
 			base.y = 0;
 		} else {
-			base.x = 16001;
-			base.y = 9001;
+			base.x = 16000;
+			base.y = 9000;
 		}
 		return base;
 	}
@@ -128,6 +125,8 @@ class Player {
 		e.setProperties(x, y, entityType, state, value);
 	}
     
+	//return the normalized id, it will be always be a number 
+	//between 0 and bustersPerPlayer
     private static int getNormalizedId(int teamId, int entityId) {
     	int normalizedId = teamId == 0 ? entityId : entityId - bustersPerPlayer;
     	return normalizedId;
@@ -178,7 +177,7 @@ class Player {
 			a = getGhost(currentBuster, ghosts);
 			if (a == null) {
 				//if no action possible go discover base;
-				return discoverBase(currentBuster);				
+				return discoverMap(currentBuster);				
 			}
 		}
 		
@@ -200,6 +199,7 @@ class Player {
 		return null;
 	}
 
+	//Check is the given entity is not already target by an another buster
 	private static boolean isNotATarget(Entity enemy) {
 		for (Buster buster : busters) {
 			if (buster.targetId == enemy.id) {
@@ -225,7 +225,10 @@ class Player {
 		return null;
 	}
 
-	private static Action discoverBase(Buster buster) {
+	//The main algo for map discovering
+	//If our half of the map is already check then our buster will 
+	//wait in front on the enemy base
+	private static Action discoverMap(Buster buster) {
 		
 		double discoverZoneSizeX = MAP_WIDTH / bustersPerPlayer;
 		double discoverZoneSizeY = MAP_HEIGHT / bustersPerPlayer;
@@ -236,9 +239,9 @@ class Player {
 			buster.isDiagonalCheck = true;
 		}
 		
+		//Go to enemy base
 		if (buster.isDiagonalCheck) {
 			int nbBusterAtEnemyBase = busterAtEnemyBase.size();
-			System.err.println("busterAtEnemyBase : " + nbBusterAtEnemyBase);
 			int index = busterAtEnemyBase.indexOf(buster);
 			if (index == -1) {
 				index = nbBusterAtEnemyBase;
@@ -246,11 +249,8 @@ class Player {
 			}
 			double angleRange = 90.0 / nbBusterAtEnemyBase;
 			double angle = (angleRange * (index + 1)) - (angleRange / 2.0);
-			System.err.println("Buster : " + buster.id + " GO TO ENEMIE BASE with angle : " + angle);
-			
-			
-			posXDiagonal = Math.abs((int) (enemyBase.x - MAX_RELEASE_RANGE * 1.5 * Math.cos(Math.toRadians(angle))));
-			posYDiagonal = Math.abs((int) (enemyBase.y - MAX_RELEASE_RANGE * 1.5 * Math.sin(Math.toRadians(angle))));
+			posXDiagonal = Math.abs((int) (enemyBase.x - MAX_RELEASE_RANGE * Math.cos(Math.toRadians(angle))));
+			posYDiagonal = Math.abs((int) (enemyBase.y - MAX_RELEASE_RANGE * Math.sin(Math.toRadians(angle))));
 		}
 		return new Action ("MOVE", posXDiagonal, posYDiagonal);	
 	}
@@ -261,10 +261,10 @@ class Player {
 		for (Entity ghost : ghosts) {
 			if (ghost.isVisible) {
 				double distance = getDistance(buster, ghost);
-				//if distance is greater than view_range that's mean that our buster is too far away
-				//if the entity is a ghost and the distance is < than MIN_BUST_RANGE then we can't catch it
-				//if (distance > VIEW_RANGE || (entity.type == -1 && distance < MIN_BUST_RANGE)) continue;
-				if (distance > VIEW_RANGE * 2) continue;
+				//Don't try to catch ghost with more than 30 stamina, lets enemy do it !
+				//If the distance is greater than 2 times our view range it's too far away 
+				//to help other buster to catch it
+				if (distance > VIEW_RANGE * 2 || ghost.state >= 30) continue;
 				if (distance < minDist) {
 					closestEntity = ghost;
 					minDist = distance;
